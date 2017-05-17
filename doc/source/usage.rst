@@ -4,4 +4,4 @@ Usage
 
 To use networking-avaya in a project::
 
-    import networking-avaya
+    import networking_avaya

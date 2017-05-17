@@ -1,6 +1,6 @@
 [run]
 branch = True
-source = networking-avaya
+source = networking_avaya
 
 [report]
 ignore_errors = True

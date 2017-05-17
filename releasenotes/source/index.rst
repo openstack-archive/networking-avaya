@@ -1,5 +1,5 @@
 ============================================
- networking-avaya Release Notes
+ networking_avaya Release Notes
 ============================================
 
 .. toctree::

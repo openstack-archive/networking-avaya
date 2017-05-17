@@ -16,4 +16,4 @@ import pbr.version
 
 
 __version__ = pbr.version.VersionInfo(
-    'networking-avaya').version_string()
+    'networking_avaya').version_string()
