@@ -13,3 +13,4 @@ oslo.db!=4.13.1,!=4.13.2,>=4.10.0
 oslo.log>=1.14.0
 oslo.messaging>=5.2.0
 oslo.service>=1.10.0
+oslo.utils>=3.16.0

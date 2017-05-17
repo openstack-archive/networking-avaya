@@ -33,21 +33,24 @@ class AvayaMechanismBaseTestCase(base.AgentMechanismBaseTestCase):
 
     def setUp(self):
         super(AvayaMechanismBaseTestCase, self).setUp()
+        self.mock_parse_static_mappings = mock.patch(
+            'networking_avaya.ml2.mapping_parser.parse_static_mappings',
+            return_value=(None, None)
+        ).start()
+        self.mock_segment_isid = mock.patch.object(
+            mech_avaya,
+            '_is_segment_isid').start()
         self.driver = mech_avaya.AvayaMechanismDriver()
         self.driver.initialize()
         self.mock_continue_binding = mock.patch.object(
             base.FakePortContext,
             'continue_binding').start()
-        self.mock_segment_isid = mock.patch.object(
-            mech_avaya,
-            '_is_segment_isid').start()
         self.mock_allocate_dynamic_segment = mock.patch.object(
-            base.FakePortContext,
-            'allocate_dynamic_segment').start()
-        self.mock_host = mock.patch.object(
-            base.FakePortContext,
-            'host',
-            'FAKE_HOST').start()
+            self.driver,
+            '_allocate_dynamic_segment').start()
+        # self.mock_get_physnets = mock.patch.object(
+        #    self.driver,
+        #    '_get_physnets_for_fabric').start()
 
 
 class AvayaMechanismGenericTestCase(AvayaMechanismBaseTestCase,
@@ -75,36 +78,69 @@ class AvayaMechanismVlanTestCase(AvayaMechanismBaseTestCase):
 
 
 class AvayaMechanismIsidTestCase(AvayaMechanismBaseTestCase):
-    ISID_SEGMENTS = [{api.ID: 'isid_segment_id',
-                      api.NETWORK_TYPE: const.TYPE_ISID,
-                      api.SEGMENTATION_ID: 1234}]
+    ISID_SEGMENT = {api.ID: 'isid_segment_id',
+                    api.NETWORK_TYPE: const.TYPE_ISID,
+                    api.SEGMENTATION_ID: 1234}
     VLAN_SEGMENT = {api.NETWORK_TYPE: 'vlan',
-                    api.PHYSICAL_NETWORK: 'FAKE_HOST',
+                    api.PHYSICAL_NETWORK: 'FAKE_PHYSNET',
                     const.AVAYA_VLAN_SEGMENT: True}
 
     def setUp(self):
         super(AvayaMechanismIsidTestCase, self).setUp()
         self.context = base.FakePortContext(self.AGENT_TYPE,
                                             self.AGENTS,
-                                            self.ISID_SEGMENTS,
+                                            [self.ISID_SEGMENT],
                                             vnic_type=self.VNIC_TYPE)
         self.mock_segment_isid.return_value = True
+        self.fake_segment = mock.Mock()
 
-    def test_type_isid(self):
-        fake_segment = mock.Mock()
-        self.mock_allocate_dynamic_segment.return_value = fake_segment
+    def test_bind_port(self):
+        # self.mock_get_physnets.return_value = ['FAKE_PHYSNET']
+        self.mock_allocate_dynamic_segment.return_value = self.fake_segment
         self.driver.bind_port(self.context)
-        self.mock_segment_isid.assert_called_once_with(self.ISID_SEGMENTS[0])
+        self.mock_segment_isid.assert_called_once_with(self.ISID_SEGMENT)
+        # self.mock_get_physnets.assert_called_once_with(self.context)
+        self.mock_allocate_dynamic_segment.assert_called_once_with(
+            self.context)
+        self.mock_continue_binding.assert_called_once_with(
+            'isid_segment_id',
+            [self.fake_segment])
+
+    def test_bind_port_cannot_allocate_dynamic_segment(self):
+        # self.mock_get_physnets.return_value = ['FAKE_PHYSNET']
+        self.mock_allocate_dynamic_segment.return_value = None
+        self.driver.bind_port(self.context)
+        self.mock_segment_isid.assert_called_once_with(self.ISID_SEGMENT)
+        # self.mock_get_physnets.assert_called_once_with(self.context)
+        self.mock_allocate_dynamic_segment.assert_called_once_with(
+            self.context)
+        self.assertFalse(self.mock_continue_binding.called)
+
+    def test_bind_port_multiple_physnets_first(self):
+        self.skipTest("For future")
+        self.mock_get_physnets.return_value = ['FAKE_PHYSNET', 'FAKE_PHYSNET2']
+        self.mock_allocate_dynamic_segment.return_value = self.fake_segment
+        self.driver.bind_port(self.context)
+        self.mock_segment_isid.assert_called_once_with(self.ISID_SEGMENT)
+        self.mock_get_physnets.assert_called_once_with(self.context)
         self.mock_allocate_dynamic_segment.assert_called_once_with(
             self.VLAN_SEGMENT)
         self.mock_continue_binding.assert_called_once_with(
             'isid_segment_id',
-            [fake_segment])
+            [self.fake_segment])
 
-    def test_cannot_allocate_dynamic_segment(self):
-        self.mock_allocate_dynamic_segment.return_value = None
+    def test_bind_port_multiple_physnets_second(self):
+        self.skipTest("For future")
+        VLAN_SEGMENT_BAD = self.VLAN_SEGMENT.copy()
+        VLAN_SEGMENT_BAD[api.PHYSICAL_NETWORK] = 'FAKE_PHYSNET2'
+        self.mock_get_physnets.return_value = ['FAKE_PHYSNET2', 'FAKE_PHYSNET']
+        self.mock_allocate_dynamic_segment.side_effect = [None,
+                                                          self.fake_segment]
         self.driver.bind_port(self.context)
-        self.mock_segment_isid.assert_called_once_with(self.ISID_SEGMENTS[0])
-        self.mock_allocate_dynamic_segment.assert_called_once_with(
-            self.VLAN_SEGMENT)
-        self.assertFalse(self.mock_continue_binding.called)
+        self.mock_segment_isid.assert_called_once_with(self.ISID_SEGMENT)
+        self.mock_get_physnets.assert_called_once_with(self.context)
+        calls = [mock.call(VLAN_SEGMENT_BAD), mock.call(self.VLAN_SEGMENT)]
+        self.mock_allocate_dynamic_segment.assert_has_calls(calls)
+        self.mock_continue_binding.assert_called_once_with(
+            'isid_segment_id',
+            [self.fake_segment])
