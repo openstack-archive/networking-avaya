@@ -13,14 +13,8 @@
 #    under the License.
 
 import mock
-# from six import moves
-# import testtools
-# from testtools import matchers
 
-# from neutron.common import exceptions as exc
-# from neutron.db import api as db
 from neutron.plugins.ml2 import driver_api as api
-# from neutron.tests.unit import testlib_api
 from neutron.tests.unit.plugins.ml2 import _test_mech_agent as base
 
 from networking_avaya.ml2 import const
@@ -28,8 +22,6 @@ from networking_avaya.ml2.drivers import mech_avaya
 
 
 class AvayaMechanismBaseTestCase(base.AgentMechanismBaseTestCase):
-    # CAP_PORT_FILTER = True
-    # AGENT_TYPE = constants.AGENT_TYPE_LINUXBRIDGE
 
     def setUp(self):
         super(AvayaMechanismBaseTestCase, self).setUp()

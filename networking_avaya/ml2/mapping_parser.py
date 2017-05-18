@@ -14,6 +14,7 @@
 #    under the License.
 
 from collections import defaultdict
+import six
 
 from neutron._i18n import _LE
 from neutron._i18n import _LW
@@ -36,14 +37,14 @@ def parse_static_mappings(config_file):
     except IOError as e:
         LOG.error(_LE("Error while parsing static mappings file %(file)s: "
                   "%(error)s"), {'file': config_file, 'error': e.strerror})
-        return STATIC_MAPPINGS
+        return {}, {}
 
-    for host, mappings in sections.iteritems():
+    for host, mappings in six.iteritems(sections):
         host_ip = mappings.pop("host_ip", None)
         if not host_ip:
             raise ValueError("No host_ip for host %s" % host)
-        HOST_IPS[host] = host_ip
-        for physnet, maps in mappings.iteritems():
+        HOST_IPS[host] = host_ip[0]
+        for physnet, maps in six.iteritems(mappings):
             for mapping in list_parser(maps[0]):
                 try:
                     (switch, port) = mapping.split(":")

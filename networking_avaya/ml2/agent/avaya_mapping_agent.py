@@ -15,7 +15,6 @@
 
 
 import sys
-import uuid
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -36,12 +35,41 @@ from neutron import service as neutron_service
 
 from networking_avaya.ml2 import const
 from networking_avaya.ml2.drivers import rpc
+from networking_avaya.sdn import client
 
 
 eventlet_utils.monkey_patch()
 
 
 LOG = logging.getLogger(__name__)
+
+
+agent_opts = [
+    cfg.IntOpt('tx_check_interval',
+               default=30,
+               help='The amount of seconds between checks of transaction '
+                    'status on SDN controller'),
+    cfg.URIOpt('sdn_url',
+               required=True,
+               help='Base url of SDN REST API'),
+    cfg.StrOpt('sdn_username',
+               required=True,
+               help='Username for authorization on SDN'),
+    cfg.StrOpt('sdn_password',
+               required=True,
+               help='Password for authorization on SDN'),
+    cfg.StrOpt('sdn_cert_path',
+               help='Path to a file with CA certificate for SDN. If it is not '
+                    'specified, default CAs will be used. If empty string, '
+                    'verification will be disabled.'),
+]
+
+
+cfg.CONF.register_opts(agent_opts, "avaya_mapping_agent")
+
+
+class NoOpenStackID(Exception):
+    pass
 
 
 class AvayaMappingAgent(manager.Manager):
@@ -65,6 +93,10 @@ class AvayaMappingAgent(manager.Manager):
             self.heartbeat.start(interval=report_interval)
         self.first_start = True
         self.tx_ids = set()
+        agent_conf = cfg.CONF.avaya_mapping_agent
+        self.sdn_client = client.AvayaSDNClient(
+            agent_conf.sdn_url, agent_conf.sdn_username,
+            agent_conf.sdn_password, agent_conf.sdn_cert_path)
 
     def _report_state(self):
         try:
@@ -83,25 +115,46 @@ class AvayaMappingAgent(manager.Manager):
         self.agent_state.pop("start_flag", None)
         self.first_start = False
 
-    def create_mapping(self, context, mapping):
+    def _compare_and_set_openstack_id(self, openstack_id):
+        old_id = self.sdn_client.openstack_id
+        if not old_id:
+            self.sdn_client.openstack_id = openstack_id
+        elif old_id != openstack_id:
+            LOG.error(_LE("Openstack id changed from %(old)s to %(new)s"),
+                      {"old": old_id, "new": openstack_id})
+
+    def create_mapping(self, context, openstack_id, mapping):
         LOG.debug("Got create_mapping call for mapping %s", mapping)
-        tx_id = str(uuid.uuid4())
+        self._compare_and_set_openstack_id(openstack_id)
+        tx_id = self.sdn_client.create_network(mapping)
         self.tx_ids.add(tx_id)
+        LOG.debug("Got transaction_id %s", tx_id)
         return tx_id
 
-    def delete_mapping(self, context, mapping):
+    def delete_mapping(self, context, openstack_id, mapping):
         LOG.debug("Got delete_mapping call for mapping %s", mapping)
-        tx_id = str(uuid.uuid4())
+        self._compare_and_set_openstack_id(openstack_id)
+        tx_id = self.sdn_client.delete_network(mapping)
         self.tx_ids.add(tx_id)
+        LOG.debug("Got transaction_id %s", tx_id)
         return tx_id
 
-    @periodic_task.periodic_task(spacing=1, run_immediately=True)
+    def get_openstack_id(self, context):
+        LOG.debug("Got get_openstack_id call")
+        return self.sdn_client.get_openstack_id()
+
+    @periodic_task.periodic_task(spacing=1)
     def check_transactions_state(self, context):
         tx_ids = set(self.tx_ids)
         LOG.debug("Periodical check of transactions state %s", tx_ids)
         if tx_ids:
-            self.avaya_driver_rpc.transactions_done(context, tx_ids)
-            self.tx_ids -= tx_ids
+            completed = self.sdn_client.get_transactions_status(tx_ids)
+            LOG.debug("Completed transactions: %s", tx_ids)
+            self.avaya_driver_rpc.transactions_done(context, completed)
+            self.tx_ids -= completed
+
+    def after_start(self):
+        pass
 
 
 def main():
@@ -114,5 +167,6 @@ def main():
         binary='avaya-mapping-agent',
         topic=const.AVAYA_MAPPING_RPC,
         report_interval=0,
+        periodic_interval=cfg.CONF.avaya_mapping_agent.tx_check_interval,
         manager=mgr)
     service.launch(cfg.CONF, server).wait()

@@ -45,7 +45,7 @@ eventlet_utils.monkey_patch()
 LOG = logging.getLogger(__name__)
 
 
-lldp_opts = [
+agent_opts = [
     cfg.StrOpt('lldp_physnet_interfaces',
                default=[],
                help='Comma-separated list of <physnet>:<intf1>[:<intf2>]... '
@@ -62,7 +62,7 @@ lldp_opts = [
               help='IP address which will be used by SDN to configure OVS'),
 ]
 
-cfg.CONF.register_opts(lldp_opts, "avaya_discovery_agent")
+cfg.CONF.register_opts(agent_opts, "avaya_discovery_agent")
 
 
 class AvayaLLDPAgent(manager.Manager):
@@ -103,6 +103,8 @@ class AvayaLLDPAgent(manager.Manager):
 
     def _process_lldp(self):
         lldp_info = defaultdict(set)
+        for line in self.lldp_catcher.iter_stderr():
+            LOG.error("Error from lldp_catcher: %s", line)
         for line in self.lldp_catcher.iter_stdout():
             physnet, switch, port = line.split(' ')
             lldp_info[physnet].add((switch, port))

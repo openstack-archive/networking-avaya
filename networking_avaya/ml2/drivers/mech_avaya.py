@@ -17,6 +17,7 @@ from neutron_lib import constants as lib_const
 from neutron_lib import exceptions as lib_exc
 from oslo_config import cfg
 from oslo_log import log as logging
+import six
 
 from neutron._i18n import _
 from neutron._i18n import _LE
@@ -40,7 +41,7 @@ mech_driver_opts = [
                default="/etc/neutron/plugins/ml2/avaya_static_mappings.ini",
                help=_("Path to file with static mappings host->switch/port")),
     cfg.IntOpt('dynamic_entry_age',
-               default=30,
+               default=90,
                help=_("Time in seconds after which dynamic mapping will be "
                       "invalid")),
     cfg.BoolOpt('fallback_to_static',
@@ -67,6 +68,11 @@ class NoBridgeName(lib_exc.NeutronException):
 
 class NoMgmtIP(lib_exc.NeutronException):
     message = _("No management IP for host %(host)s")
+
+
+class MappingAgentError(lib_exc.NeutronException):
+    message = _("Error while sending mapping %(op)s to agent, "
+                "caused by %(cause)s")
 
 
 def _is_segment_isid(segment):
@@ -106,7 +112,7 @@ def _mapping(host, top, bottom):
     elif top[api.NETWORK_TYPE] == n_const.TYPE_VLAN:
         ret['physnet'] = top[api.PHYSICAL_NETWORK]
         ret['vlan'] = top[api.SEGMENTATION_ID]
-        ret['isid'] = None
+        ret['isid'] = 0
         return ret
     return None
 
@@ -125,11 +131,11 @@ class AvayaMechanismDriver(api.MechanismDriver):
 
     def __init__(self):
         super(AvayaMechanismDriver, self).__init__()
-        self._start_rpc_listeners()
         self.agent_api = rpc.AgentMappingAPI()
+        self._start_rpc_listeners()
         network_vlan_ranges = plugin_utils.parse_network_vlan_ranges(
             cfg.CONF.ml2_type_vlan.network_vlan_ranges)
-        self.vlan_physnets = network_vlan_ranges.keys()
+        self.vlan_physnets = list(network_vlan_ranges)
         self.dynamic_age = cfg.CONF.avaya_ml2.dynamic_entry_age
         if cfg.CONF.avaya_ml2.fallback_to_static:
             static_mappings, mgmt_ips = mapping_parser.parse_static_mappings(
@@ -139,6 +145,7 @@ class AvayaMechanismDriver(api.MechanismDriver):
         else:
             self.static_mappings = {}
             self.mgmt_ips = {}
+        self._openstack_id = None
 
     def _start_rpc_listeners(self):
         self.endpoints = [rpc.AvayaCallbacks()]
@@ -150,35 +157,48 @@ class AvayaMechanismDriver(api.MechanismDriver):
     def initialize(self):
         LOG.info(_LI("Avaya mechanism driver initialized"))
 
-    def _get_mappings(self, context, exclude_physnets=[]):
-        host = context.host
+    def get_openstack_id(self, context):
+        if not self._openstack_id:
+            session = context._plugin_context.session
+            with models.get_openstack_id(session) as ret:
+                if not ret:
+                    ctx = context._plugin_context
+                    ret['openstack_id'] = self.agent_api.get_openstack_id(ctx)
+                self._openstack_id = ret['openstack_id']
+        return self._openstack_id
+
+    def _get_mappings(self, context, host, exclude_physnets=[]):
+        is_dynamic = True
         mappings = models.get_dynamic_mappings_for_host(
             context, host, self.dynamic_age, exclude_physnets)
         if not mappings:
-            mappings = self.static_mappings.get(context.host, [])
-            mappings = {physnet: maps for physnet, maps in mappings.iteritems()
+            mappings = self.static_mappings.get(host, {})
+            mappings = {physnet: maps for physnet, maps
+                        in six.iteritems(mappings)
                         if physnet not in exclude_physnets}
+            is_dynamic = False
         if not mappings:
             raise NoValidMappings(host=host)
-        return mappings
+        return mappings, is_dynamic
 
     def _populate_switch_ports(self, context, mapping):
         physnet = mapping['physnet']
         host = mapping['host']
-        # NOTE(Yar): To be sure that they're always the same
-        assert context.host == host, "mapping has wrong host"
         try:
-            mapping['switch_ports'] = self._get_mappings(context)[physnet]
+            mappings = self._get_mappings(context, host)
+            mapping['switch_ports'] = mappings[0][physnet]
+            mapping['is_dynamic'] = mappings[1]
         except KeyError:
             raise NoValidMappingsPhysnet(host=host, physnet=physnet)
 
     def _populate_mgmt_ip(self, context, mapping):
         host = mapping['host']
+        assert host == context.host, "mapping has wrong host"
         discovery_agent = context.host_agents(const.AVAYA_DISCOVERY_AGENT)
         try:
             mgmt_ip = discovery_agent[0]['configurations']['management_ip']
             mapping['management_ip'] = mgmt_ip
-        except KeyError:
+        except (KeyError, IndexError):
             try:
                 mapping['management_ip'] = self.mgmt_ips[host]
             except KeyError:
@@ -187,36 +207,35 @@ class AvayaMechanismDriver(api.MechanismDriver):
     def _populate_bridge_name(self, context, mapping):
         host = mapping['host']
         physnet = mapping['physnet']
-        ovs_agent = context.host_agents(lib_const.AGENT_TYPE_OVS)[0]
+        assert host == context.host, "mapping has wrong host"
+        ovs_agent = context.host_agents(lib_const.AGENT_TYPE_OVS)
         try:
-            bridge_mappings = ovs_agent['configurations']['bridge_mappings']
+            bridge_mappings = ovs_agent[0]['configurations']['bridge_mappings']
             mapping['bridge_name'] = bridge_mappings[physnet]
-        except KeyError:
+        except (KeyError, IndexError):
             raise NoBridgeName(host=host, physnet=physnet)
 
     def _create_mapping(self, context, mapping):
+        openstack_id = self.get_openstack_id(context)
         self._populate_switch_ports(context, mapping)
         self._populate_mgmt_ip(context, mapping)
         self._populate_bridge_name(context, mapping)
         try:
             ctx = context._plugin_context
-            tx_id = self.agent_api.create_mapping(ctx, mapping)
-            LOG.debug("Transaction id %s", tx_id)
+            tx_id = self.agent_api.create_mapping(ctx, openstack_id, mapping)
             return tx_id
-        except Exception:
-            LOG.error(_LE("Error while sending mapping creation request %s"),
-                      mapping)
+        except Exception as e:
+            raise MappingAgentError(op='creation', cause=str(e))
 
     def _delete_mapping(self, context, mapping):
+        openstack_id = self.get_openstack_id(context)
         self._populate_switch_ports(context, mapping)
         try:
             ctx = context._plugin_context
-            tx_id = self.agent_api.delete_mapping(ctx, mapping)
-            LOG.debug("Transaction id %s", tx_id)
+            tx_id = self.agent_api.delete_mapping(ctx, openstack_id, mapping)
             return tx_id
-        except Exception:
-            LOG.error(_LE("Error while sending mapping deletion request %s"),
-                      mapping)
+        except Exception as e:
+            raise MappingAgentError(op='deletion', cause=str(e))
 
     @check_supported_network
     def update_port_precommit(self, context, network_id):
@@ -281,7 +300,9 @@ class AvayaMechanismDriver(api.MechanismDriver):
 
     def _allocate_dynamic_segment(self, context):
         network_id = context.network.current[api.ID]
-        physnets = self._get_mappings(context, self.vlan_physnets).keys()
+        host = context.host
+        physnets = list(self._get_mappings(context, host,
+                                           self.vlan_physnets)[0])
         session = context._plugin_context.session
         with models.get_physnets_from_existing_dynamic_segment(
                 session, network_id, physnets) as candidate_physnets:

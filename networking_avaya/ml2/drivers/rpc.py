@@ -27,13 +27,19 @@ class AgentMappingAPI(object):
                                        version='1.0')
         self.client = n_rpc.get_client(target)
 
-    def create_mapping(self, context, mapping):
+    def create_mapping(self, context, openstack_id, mapping):
         cctxt = self.client.prepare()
-        return cctxt.call(context, 'create_mapping', mapping=mapping)
+        return cctxt.call(context, 'create_mapping', mapping=mapping,
+                          openstack_id=openstack_id)
 
-    def delete_mapping(self, context, mapping):
+    def delete_mapping(self, context, openstack_id, mapping):
         cctxt = self.client.prepare()
-        return cctxt.call(context, 'delete_mapping', mapping=mapping)
+        return cctxt.call(context, 'delete_mapping', mapping=mapping,
+                          openstack_id=openstack_id)
+
+    def get_openstack_id(self, context):
+        cctxt = self.client.prepare()
+        return cctxt.call(context, 'get_openstack_id')
 
 
 class ML2DriverAPI(object):
