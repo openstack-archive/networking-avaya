@@ -22,8 +22,6 @@ from oslo_db import api as oslo_db_api
 from oslo_log import log
 
 from neutron._i18n import _
-from neutron._i18n import _LI
-from neutron._i18n import _LW
 from neutron.common import exceptions as exc
 from neutron.db import api as db_api
 from neutron.plugins.ml2 import driver_api as api
@@ -69,7 +67,7 @@ class AvayaIsidTypeDriver(helpers.SegmentTypeDriver):
 
     def initialize(self):
         self._sync_allocations()
-        LOG.info(_LI("AvayaIsidTypeDriver initialization complete"))
+        LOG.info("AvayaIsidTypeDriver initialization complete")
 
     def _verify_isid_range(self, isid_range):
         for isid in isid_range:
@@ -97,7 +95,7 @@ class AvayaIsidTypeDriver(helpers.SegmentTypeDriver):
                 raise exc.NetworkTunnelRangeError(tunnel_range=entry, error=ex)
             self._verify_isid_range(isid_range)
             result_range.append(isid_range)
-        LOG.info(_LI("ISID ranges: %s"), result_range)
+        LOG.info(("ISID ranges: %s"), result_range)
         return result_range
 
     @oslo_db_api.wrap_db_retry(
@@ -191,7 +189,7 @@ class AvayaIsidTypeDriver(helpers.SegmentTypeDriver):
                     LOG.debug("Releasing %(type)s %(id)s outside pool",
                               info)
         if not count:
-            LOG.warning(_LW("%(type)s %(id)s not found"), info)
+            LOG.warning(("%(type)s %(id)s not found"), info)
 
     def _get_allocation(self, session, segment):
         return session.query(models.IsidAllocation).filter_by(

@@ -20,8 +20,6 @@ from oslo_log import log as logging
 import six
 
 from neutron._i18n import _
-from neutron._i18n import _LE
-from neutron._i18n import _LI
 from neutron.common import rpc as n_rpc
 from neutron.plugins.common import constants as n_const
 from neutron.plugins.common import utils as plugin_utils
@@ -155,7 +153,7 @@ class AvayaMechanismDriver(api.MechanismDriver):
         return self.conn.consume_in_threads()
 
     def initialize(self):
-        LOG.info(_LI("Avaya mechanism driver initialized"))
+        LOG.info("Avaya mechanism driver initialized")
 
     def get_openstack_id(self, context):
         if not self._openstack_id:
@@ -325,7 +323,7 @@ class AvayaMechanismDriver(api.MechanismDriver):
                     context.continue_binding(segment[api.ID],
                                              [dynamic_segment])
                     return
-                LOG.error(_LE("Cannot allocate dynamic segment for port "
+                LOG.error(("Cannot allocate dynamic segment for port "
                               "%s"), context.current[api.ID])
             else:
                 LOG.debug("No binding required for segment %s",

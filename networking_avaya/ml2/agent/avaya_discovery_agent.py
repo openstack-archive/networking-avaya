@@ -22,9 +22,6 @@ from oslo_log import log as logging
 from oslo_service import loopingcall
 from oslo_service import service
 
-from neutron._i18n import _LE
-from neutron._i18n import _LI
-from neutron._i18n import _LW
 from neutron.agent.common import config
 from neutron.agent.linux import async_process
 from neutron.agent import rpc as agent_rpc
@@ -118,12 +115,12 @@ class AvayaLLDPAgent(manager.Manager):
                                         self.first_start)
         except AttributeError:
             # This means the server does not support report_state
-            LOG.warning(_LW('Neutron server does not support state report.'
-                            ' State report for this agent will be disabled.'))
+            LOG.warning('Neutron server does not support state report.'
+                            ' State report for this agent will be disabled.')
             self.heartbeat.stop()
             return
         except Exception:
-            LOG.exception(_LE("Failed reporting state!"))
+            LOG.exception("Failed reporting state!")
             return
         self.agent_state.pop("start_flag", None)
         self.first_start = False
@@ -133,7 +130,7 @@ class AvayaLLDPAgent(manager.Manager):
         self.lldp_catcher.start()
         interval = cfg.CONF.avaya_discovery_agent.lldp_monitor_interval
         self.lldp_monitor.start(interval=interval)
-        LOG.info(_LI("Agent started"))
+        LOG.info("Agent started")
 
 
 def main():
