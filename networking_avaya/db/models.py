@@ -76,7 +76,7 @@ class SwitchDynamicMapping(model_base.BASEV2):
     host = sa.Column(sa.String(255), nullable=False, index=True)
     physnet = sa.Column(sa.String(255), nullable=False)
     last_update = sa.Column(sqlalchemytypes.TruncatedDateTime,
-                            default=timeutils.utcnow, nullable=False)
+                            default=lambda: timeutils.utcnow(), nullable=False)
 
 
 class OpenStackID(model_base.BASEV2):
