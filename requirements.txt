@@ -4,7 +4,7 @@
 
 pbr>=1.6
 eventlet!=0.18.3,>=0.18.2
-neutron-lib>=0.4.0
+neutron-lib>=1.9.0 # Apache-2.0
 SQLAlchemy<1.1.0,>=1.0.10
 alembic>=0.8.4
 six>=1.9.0
