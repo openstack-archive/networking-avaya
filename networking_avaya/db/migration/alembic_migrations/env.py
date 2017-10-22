@@ -23,7 +23,7 @@ from neutron.db.migration.alembic_migrations import external
 from neutron.db.migration import autogen
 from neutron.db.migration.connection import DBConnection
 # from neutron.db.migration.models import head  # noqa
-from neutron.db import model_base
+from neutron_lib.db import model_base
 
 MYSQL_ENGINE = None
 
@@ -104,7 +104,9 @@ def run_migrations_online():
     """
     set_mysql_engine()
     connection = config.attributes.get('connection')
-    with DBConnection(neutron_config.database.connection, connection) as conn:
+    with DBConnection(neutron_config.database.connection,
+                      neutron_config.database.mysql_enable_ndb,
+                      connection) as conn:
         context.configure(
             connection=conn,
             target_metadata=target_metadata,
