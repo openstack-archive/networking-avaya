@@ -42,7 +42,7 @@ class AvayaClientBaseTestCase(base.BaseTestCase):
             "FAKE_BASE/")
         fake_base_ep.start()
         self.client = client.AvayaSDNClient("FAKE_URL/", "FAKE_USER",
-                                            "FAKE_PASWORD", "FAKE_CA_PATH")
+                                            "FAKE_PASSWORD", "FAKE_CA_PATH")
 
 
 class AvayaClientGetUrlTestCase(AvayaClientBaseTestCase):
