@@ -23,7 +23,7 @@ from neutron.db.migration.alembic_migrations import external
 from neutron.db.migration import autogen
 from neutron.db.migration.connection import DBConnection
 # from neutron.db.migration.models import head  # noqa
-from neutron.db import model_base
+from neutron_lib.db import model_base
 
 MYSQL_ENGINE = None
 
