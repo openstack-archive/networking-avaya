@@ -25,8 +25,8 @@ from oslo_service import service
 from neutron._i18n import _LE
 from neutron._i18n import _LI
 from neutron._i18n import _LW
+from neutron.agent.common import async_process
 from neutron.agent.common import config
-from neutron.agent.linux import async_process
 from neutron.agent import rpc as agent_rpc
 from neutron.common import config as common_config
 from neutron.common import eventlet_utils
