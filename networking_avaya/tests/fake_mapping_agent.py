@@ -36,7 +36,7 @@ class FakeMappingAgent(object):
             'start_flag': True,
             'agent_type': const.AVAYA_MAPPING_AGENT}
         oslo_messaging.set_transport_defaults(control_exchange='neutron')
-        n_rpc.TRANSPORT = oslo_messaging.get_transport(cfg.CONF, url=rpc_url)
+        n_rpc.TRANSPORT = oslo_messaging.get_rpc_transport(cfg.CONF, url=rpc_url)
         self.report_api = a_rpc.PluginReportStateAPI(topics.REPORTS)
         self.ctx = context.get_admin_context_without_session()
         self.report_state()
