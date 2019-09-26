@@ -1,7 +1,0 @@
-[run]
-branch = True
-source = networking_avaya
-omit = networking_avaya/tests/*,
-
-[report]
-ignore_errors = True
